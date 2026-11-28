@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>激活码/续期码生成器【管理员自用】</title>
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+body{
+    background:#f3f4f6;
+    padding:20px 16px;
+    max-width:620px;
+    margin:0 auto;
+}
+.main-card{
+    background:#ffffff;
+    border-radius:18px;
+    padding:24px 20px;
+    box-shadow:0 2px 14px rgba(0,0,0,0.1);
+}
+.label{
+    display:block;
+    font-size:15px;
+    font-weight:600;
+    color:#374151;
+    margin-bottom:10px;
+}
+#machineInput,#typeSelect,#tierSelect{
+    width:100%;
+    height:50px;
+    padding:0 14px;
+    font-size:15px;
+    border:1px solid #d1d5db;
+    border-radius:12px;
+    background:#fff;
+    box-sizing:border-box;
+}
+#machineInput:focus,#typeSelect:focus,#tierSelect:focus{outline:none;border-color:#2563eb;}
+.type-row{display:flex;gap:10px;}
+.type-row>div{flex:1;}
+#typeSelect,#tierSelect{margin-bottom:18px;}
+#btnGen{
+    width:100%;
+    height:52px;
+    margin:4px 0 18px;
+    border:none;
+    border-radius:12px;
+    background:#2563eb;
+    color:#fff;
+    font-size:17px;
+    font-weight:700;
+    cursor:pointer;
+    box-shadow:0 6px 16px rgba(37,99,235,0.25);
+}
+#btnGen:active{transform:scale(0.98);}
+.result-box{
+    width:100%;
+    min-height:64px;
+    padding:14px;
+    background:#f8fafc;
+    border:1.5px dashed #cbd5e1;
+    border-radius:12px;
+    word-break:break-all;
+    font-size:15px;
+    color:#1f2937;
+    line-height:1.6;
+    box-sizing:border-box;
+}
+.result-box.placeholder{color:#94a3b8;}
+.result-tier{
+    margin-top:8px;
+    font-size:13px;
+    color:#6b7280;
+    line-height:1.6;
+}
+#btnCopy{
+    width:100%;
+    height:50px;
+    margin-top:16px;
+    border:none;
+    border-radius:12px;
+    background:#16a34a;
+    color:#fff;
+    font-size:16px;
+    font-weight:700;
+    cursor:pointer;
+    box-shadow:0 6px 16px rgba(22,163,74,0.25);
+}
+#btnCopy:active{transform:scale(0.98);}
+.tip-warning{
+    margin-top:22px;
+    padding:12px;
+    background:#fef2f2;
+    border-radius:10px;
+    border:1px solid #fecaca;
+    font-size:13px;
+    color:#b91c1c;
+    line-height:1.7;
+}
+.tip-info{
+    margin-top:12px;
+    padding:12px;
+    background:#eff6ff;
+    border-radius:10px;
+    border:1px solid #bfdbfe;
+    font-size:13px;
+    color:#1d4ed8;
+    line-height:1.7;
+}
+</style>
+</head>
+<body>
+<div class="main-card">
+    <label class="label" for="machineInput">用户本机机器码</label>
+    <input id="machineInput" placeholder="粘贴 APP 里显示的机器码">
+
+    <div class="type-row">
+        <div>
+            <label class="label" for="typeSelect">码类型</label>
+            <select id="typeSelect">
+                <option value="ACT">新激活码（首次绑定，一次作废）</option>
+                <option value="REN">续期激活码（在剩余有效期上顺延）</option>
+            </select>
+        </div>
+    </div>
+
+    <label class="label" for="tierSelect">授权期限档位</label>
+    <select id="tierSelect">
+        <option value="1M">1个月（30天）</option>
+        <option value="3M">3个月（90天）</option>
+        <option value="6M">6个月（180天）</option>
+        <option value="1Y">1年（365天）</option>
+        <option value="PERM">永久使用</option>
+    </select>
+
+    <button id="btnGen" onclick="generateActCode()">生成激活码 / 续期码</button>
+
+    <div class="result-box placeholder" id="resultOut">生成结果会显示在这里</div>
+    <div class="result-tier" id="resultTier"></div>
+
+    <button id="btnCopy" onclick="copyCode()">复制结果码</button>
+
+    <div class="tip-info">
+        ℹ️ 规则说明：每次生成都会带唯一随机因子，同一机器码、同一档位重复生成结果码也不相同；新激活码在本机激活后即作废，重复输入不会刷新有效期；续期激活码只能在已有有效授权时使用，按“当前剩余到期日 + 档位天数”顺延，不会从当天重新起算。永久授权续期码激活后直接转为永久。
+    </div>
+    <div class="tip-warning">
+        ⚠️ 本工具仅限管理员本人使用，禁止分享、转发给任何人；一旦 APK 流出导致密钥泄露，全部用户需更换密钥并重新激活。
+    </div>
+</div>
+
+<script>
+// ====================== 密钥：必须与车辆维保主 APP 内 AUTH_SECRET 完全一致 ======================
+const AUTH_SECRET = "CarMaintain@2026#DapengInternal#7kQ2z9";
+const TIER_LABELS = {
+    "1M":"1个月（30天）",
+    "3M":"3个月（90天）",
+    "6M":"6个月（180天）",
+    "1Y":"1年（365天）",
+    "PERM":"永久使用"
+};
+const TYPE_LABELS = {
+    "ACT":"新激活码",
+    "REN":"续期激活码"
+};
+
+function _toHex(str){
+    const esc=unescape(encodeURIComponent(str));
+    let hex="";
+    for(let i=0;i<esc.length;i++) hex+=esc.charCodeAt(i).toString(16).padStart(2,"0");
+    return hex;
+}
+
+// 随机因子：时间戳 + 随机串，保证同一机器码、同一档位每次生成的结果码都不同
+function _authNonce(){
+    return Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+}
+// 与主 APP 完全一致的算法：payload = 类型 | 机器码 | 档位 | 随机因子 | 密钥，再转十六进制（大小写不敏感）
+function genActivateCode(machineCode,tier,mode,nonce){
+    mode=mode||"ACT";
+    nonce=nonce||_authNonce();
+    const rawStr = mode + "|" + machineCode + "|" + tier + "|" + nonce + "|" + AUTH_SECRET;
+    const hex = _toHex(rawStr);
+    return hex.toUpperCase().replace(/(.{4})/g,"$1-").replace(/-$/,"");
+}
+
+function generateActCode(){
+    const inputDom = document.getElementById("machineInput");
+    const typeDom = document.getElementById("typeSelect");
+    const tierDom = document.getElementById("tierSelect");
+    const outDom = document.getElementById("resultOut");
+    const tierOut = document.getElementById("resultTier");
+    const macCode = inputDom.value.trim();
+    const mode = typeDom.value;
+    const tier = tierDom.value;
+    if(!macCode){
+        alert("请先粘贴用户机器码");
+        return;
+    }
+    const nonce = _authNonce();
+    const code = genActivateCode(macCode,tier,mode,nonce);
+    outDom.innerText = code;
+    outDom.classList.remove("placeholder");
+    tierOut.innerText = TYPE_LABELS[mode] + " · 授权档位：" + TIER_LABELS[tier];
+}
+
+function _fallbackCopy(txt){
+    const ta = document.createElement("textarea");
+    ta.value = txt;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try{
+        document.execCommand("copy");
+        alert("已复制结果码");
+    }catch(e){
+        alert("复制失败，请手动复制结果框内容");
+    }
+    document.body.removeChild(ta);
+}
+
+function copyCode(){
+    const outDom = document.getElementById("resultOut");
+    const txt = outDom.innerText.trim();
+    if(!txt || outDom.classList.contains("placeholder")){
+        alert("暂无可复制的结果码，请先生成");
+        return;
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(
+            ()=>alert("已复制结果码"),
+            ()=>_fallbackCopy(txt)
+        );
+    }else{
+        _fallbackCopy(txt);
+    }
+}
+
+document.addEventListener('plusready',function(){
+    console.log("管理员工具 plus 环境就绪");
+});
+</script>
+</body>
+</html>
